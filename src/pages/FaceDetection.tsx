@@ -70,13 +70,16 @@ const FaceDetection = () => {
 
   const startDetection = () => {
     intervalRef.current = window.setInterval(async () => {
-      if (!videoRef.current || !canvasRef.current) return;
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      if (!video || !canvas) return;
+      if (video.readyState < 2 || !video.videoWidth) return;
+
       const detections = await faceapi
-        .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions())
+        .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
         .withFaceExpressions();
 
-      const canvas = canvasRef.current;
-      const displaySize = { width: videoRef.current.videoWidth, height: videoRef.current.videoHeight };
+      const displaySize = { width: video.videoWidth, height: video.videoHeight };
       faceapi.matchDimensions(canvas, displaySize);
 
       const ctx = canvas.getContext("2d");
