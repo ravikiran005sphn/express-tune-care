@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Camera, CameraOff, Play, Pause, SkipForward, Shuffle, Volume2 } from "lucide-react";
+import { Hands, type Results } from "@mediapipe/hands";
+import handsBinaryGraphUrl from "@mediapipe/hands/hands.binarypb?url";
+import handsPackedAssetsDataUrl from "@mediapipe/hands/hands_solution_packed_assets.data?url";
+import handsPackedAssetsLoaderUrl from "@mediapipe/hands/hands_solution_packed_assets_loader.js?url";
+import handsWasmBinaryUrl from "@mediapipe/hands/hands_solution_wasm_bin.wasm?url";
+import handsWasmLoaderUrl from "@mediapipe/hands/hands_solution_wasm_bin.js?url";
 import Layout from "@/components/Layout";
 
 const SAMPLE_TRACKS = [
@@ -44,27 +50,25 @@ const HAND_CONNECTIONS: [number, number][] = [
   [0, 17],
 ];
 
-const MP_VERSION = "0.4.1646424915";
-const MP_BASE = `https://cdn.jsdelivr.net/npm/@mediapipe/hands@${MP_VERSION}`;
+const HAND_ASSET_URLS: Record<string, string> = {
+  "hands.binarypb": handsBinaryGraphUrl,
+  "hands_solution_packed_assets.data": handsPackedAssetsDataUrl,
+  "hands_solution_packed_assets_loader.js": handsPackedAssetsLoaderUrl,
+  "hands_solution_simd_wasm_bin.js": handsWasmLoaderUrl,
+  "hands_solution_simd_wasm_bin.wasm": handsWasmBinaryUrl,
+  "hands_solution_wasm_bin.js": handsWasmLoaderUrl,
+  "hands_solution_wasm_bin.wasm": handsWasmBinaryUrl,
+};
 
-function loadScript(src: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (document.querySelector(`script[src="${src}"]`)) return resolve();
-    const s = document.createElement("script");
-    s.src = src;
-    s.crossOrigin = "anonymous";
-    s.onload = () => resolve();
-    s.onerror = () => reject(new Error(`Failed to load ${src}`));
-    document.head.appendChild(s);
-  });
+function resolveHandAsset(file: string) {
+  return HAND_ASSET_URLS[file.split("/").pop() ?? file] ?? file;
 }
 
 const HandGesture = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const handsRef = useRef<any>(null);
+  const handsRef = useRef<Hands | null>(null);
   const rafRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const lastGestureRef = useRef<Gesture>(null);
@@ -97,7 +101,7 @@ const HandGesture = () => {
     }
   }, []);
 
-  const drawFrame = (results: { image: CanvasImageSource; multiHandLandmarks?: Landmark[][] }) => {
+  const drawFrame = (results: Results) => {
     const canvas = canvasRef.current;
     const video = videoRef.current;
     if (!canvas || !video) return;
@@ -131,7 +135,7 @@ const HandGesture = () => {
         }
       }
 
-      const detected = detectGesture(results.multiHandLandmarks[0]);
+      const detected = detectGesture(results.multiHandLandmarks[0] as Landmark[]);
       if (detected && cooldownRef.current <= 0) {
         if (detected === lastGestureRef.current) {
           gestureCountRef.current++;
@@ -146,31 +150,33 @@ const HandGesture = () => {
           cooldownRef.current = 30; // ~1s cooldown at 30fps
         }
       }
+    } else {
+      lastGestureRef.current = null;
+      gestureCountRef.current = 0;
+      setGesture(null);
     }
     if (cooldownRef.current > 0) cooldownRef.current--;
     ctx.restore();
   };
 
   const startCamera = async () => {
+    if (cameraOn || loading) return;
     setError(null);
     setLoading(true);
     try {
-      // Load MediaPipe from CDN to avoid Vite WASM bundling issues
-      await loadScript(`${MP_BASE}/hands.js`);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const HandsCtor = (window as any).Hands;
-      if (!HandsCtor) throw new Error("MediaPipe Hands failed to load from CDN");
-
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: 640, height: 480, facingMode: "user" },
       });
       streamRef.current = stream;
-      if (!videoRef.current) return;
+      if (!videoRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        throw new Error("Camera preview element is unavailable");
+      }
       videoRef.current.srcObject = stream;
       await videoRef.current.play();
 
-      const hands = new HandsCtor({
-        locateFile: (file: string) => `${MP_BASE}/${file}`,
+      const hands = new Hands({
+        locateFile: resolveHandAsset,
       });
       hands.setOptions({
         maxNumHands: 1,
@@ -179,6 +185,7 @@ const HandGesture = () => {
         minTrackingConfidence: 0.5,
       });
       hands.onResults(drawFrame);
+      await hands.initialize();
       handsRef.current = hands;
 
       const loop = async () => {
@@ -214,7 +221,14 @@ const HandGesture = () => {
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     }
-    if (videoRef.current) videoRef.current.srcObject = null;
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.srcObject = null;
+    }
+    if (canvasRef.current) {
+      const ctx = canvasRef.current.getContext("2d");
+      ctx?.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+    }
     setCameraOn(false);
     setGesture(null);
     lastGestureRef.current = null;
