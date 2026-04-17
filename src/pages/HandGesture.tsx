@@ -92,8 +92,14 @@ const HandGesture = () => {
   const startCamera = async () => {
     if (!videoRef.current) return;
     try {
+      setError(null);
+      // Request camera permission first
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+      videoRef.current.srcObject = stream;
+      await videoRef.current.play();
+
       const hands = new Hands({
-        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/${file}`,
       });
 
       hands.setOptions({
@@ -150,15 +156,22 @@ const HandGesture = () => {
       await camera.start();
       cameraRef.current = camera;
       setCameraOn(true);
-    } catch {
-      setError("Camera access denied or MediaPipe failed to load.");
+    } catch (err) {
+      console.error("Hand gesture camera error:", err);
+      setError(`Camera failed: ${err instanceof Error ? err.message : "Unknown error"}. Please allow camera access and try again.`);
     }
   };
 
   const stopCamera = () => {
     cameraRef.current?.stop();
+    if (videoRef.current?.srcObject) {
+      (videoRef.current.srcObject as MediaStream).getTracks().forEach((t) => t.stop());
+      videoRef.current.srcObject = null;
+    }
     setCameraOn(false);
     setGesture(null);
+    lastGestureRef.current = null;
+    gestureCountRef.current = 0;
   };
 
   // Update audio source when track changes
@@ -188,7 +201,7 @@ const HandGesture = () => {
             <div className="lg:col-span-3">
               <div className="glass rounded-2xl overflow-hidden">
                 <div className="relative aspect-video bg-secondary flex items-center justify-center">
-                  <video ref={videoRef} className="hidden" muted playsInline />
+                  <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover opacity-0 pointer-events-none" muted playsInline autoPlay />
                   <canvas ref={canvasRef} className="absolute inset-0 w-full h-full object-cover" />
                   {!cameraOn && (
                     <div className="text-center z-10">
