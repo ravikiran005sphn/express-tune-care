@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Camera, CameraOff, Play, Pause, SkipForward, Shuffle, Volume2 } from "lucide-react";
-import { Hands, type Results } from "@mediapipe/hands";
+import * as HandsModule from "@mediapipe/hands";
+import type { Results, Hands as HandsType } from "@mediapipe/hands";
 import handsBinaryGraphUrl from "@mediapipe/hands/hands.binarypb?url";
 import handsPackedAssetsDataUrl from "@mediapipe/hands/hands_solution_packed_assets.data?url";
 import handsPackedAssetsLoaderUrl from "@mediapipe/hands/hands_solution_packed_assets_loader.js?url";
