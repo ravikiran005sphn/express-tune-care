@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Camera, CameraOff, Play, Pause, SkipForward, Shuffle, Volume2 } from "lucide-react";
-import { Hands, type Results } from "@mediapipe/hands";
+import * as HandsModule from "@mediapipe/hands";
+import type { Results, Hands as HandsType } from "@mediapipe/hands";
 import handsBinaryGraphUrl from "@mediapipe/hands/hands.binarypb?url";
 import handsPackedAssetsDataUrl from "@mediapipe/hands/hands_solution_packed_assets.data?url";
 import handsPackedAssetsLoaderUrl from "@mediapipe/hands/hands_solution_packed_assets_loader.js?url";
@@ -68,7 +69,7 @@ const HandGesture = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
-  const handsRef = useRef<Hands | null>(null);
+  const handsRef = useRef<HandsType | null>(null);
   const rafRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const lastGestureRef = useRef<Gesture>(null);
@@ -175,7 +176,15 @@ const HandGesture = () => {
       videoRef.current.srcObject = stream;
       await videoRef.current.play();
 
-      const hands = new Hands({
+      const HandsCtor =
+        (HandsModule as any).Hands ??
+        ((HandsModule as any).default && (HandsModule as any).default.Hands) ??
+        (HandsModule as any).default ??
+        (typeof window !== "undefined" ? (window as any).Hands : undefined);
+      if (typeof HandsCtor !== "function") {
+        throw new Error("MediaPipe Hands constructor not found");
+      }
+      const hands: HandsType = new HandsCtor({
         locateFile: resolveHandAsset,
       });
       hands.setOptions({
